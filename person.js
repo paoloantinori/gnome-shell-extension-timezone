@@ -1,4 +1,5 @@
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import Soup from 'gi://Soup?version=3.0';
 import * as Signals from 'resource:///org/gnome/shell/misc/signals.js';
 
@@ -22,6 +23,9 @@ export class Person extends Signals.EventEmitter {
         this.github = params.github;
         this.gravatar = params.gravatar;
         this._githubToken = params._githubToken;
+
+        // Track active cancellables for cleanup
+        this._cancellables = [];
 
         this._insertDateTime();
         this._getRemoteInfo();
@@ -57,40 +61,58 @@ export class Person extends Signals.EventEmitter {
         const url = `https://api.github.com/users/${this.github}`;
         const message = Soup.Message.new('GET', url);
 
+        // Set required headers
+        message.get_request_headers().append('User-Agent', 'GNOME-Shell-Timezone-Extension/1.0');
         if (this._githubToken)
-            message.get_request_headers().append('Authorization', `token ${this._githubToken}`);
+            message.get_request_headers().append('Authorization', `Bearer ${this._githubToken}`);
+
+        // Create and track cancellable
+        const cancellable = new Gio.Cancellable();
+        this._cancellables.push(cancellable);
 
         session.send_and_read_async(message, GLib.PRIORITY_DEFAULT,
-            null,
+            cancellable,
             (sess, result) => {
-                if (message.get_status() !== Soup.Status.OK) {
-                    log(`Response code "${message.get_status()}" getting data from github for user ${this.github}`);
-                    return;
-                }
-
-                let p;
                 try {
+                    if (message.get_status() !== Soup.Status.OK) {
+                        log(`Error ${message.get_status()} fetching data from github for user ${this.github}`);
+                        return;
+                    }
+
                     const bytes = sess.send_and_read_finish(result);
                     const decoder = new TextDecoder('utf-8');
                     const responseData = decoder.decode(bytes.get_data());
-                    p = JSON.parse(responseData);
+                    const p = JSON.parse(responseData);
+
+                    if (!this.avatar && p.avatar_url)
+                        this.avatar = p.avatar_url;
+
+                    if (!this.name && p.name)
+                        this.name = p.name;
+
+                    if (!this.city && p.location)
+                        this.city = p.location;
+
+                    this.emit('changed');
                 } catch (e) {
-                    log(`Error parsing github response for user ${this.github}: ${e}`);
-                    return;
+                    log(`Error fetching github data for user ${this.github}: ${e}`);
+                } finally {
+                    // Clean up cancellable
+                    const index = this._cancellables.indexOf(cancellable);
+                    if (index > -1) {
+                        this._cancellables.splice(index, 1);
+                    }
                 }
-
-                if (!this.avatar && p.avatar_url)
-                    this.avatar = p.avatar_url;
-
-                if (!this.name && p.name)
-                    this.name = p.name;
-
-                if (!this.city && p.location)
-                    this.city = p.location;
-
-                this.emit('changed');
             }
         );
+    }
+
+    // Cancel all pending requests (call on destroy)
+    _cancelRequests() {
+        for (const cancellable of this._cancellables) {
+            cancellable.cancel();
+        }
+        this._cancellables = [];
     }
 
     _getGravatarInfo() {

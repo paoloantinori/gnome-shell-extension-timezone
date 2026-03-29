@@ -103,3 +103,35 @@ gnome-extensions disable timezone@jwendell && gnome-extensions enable timezone@j
 # Open preferences dialog
 gnome-extensions prefs timezone@jwendell
 ```
+
+## Running Tests
+
+The test suite helps detect API breakages when GNOME Shell updates:
+
+```bash
+# Run all tests
+./tests/run-tests.sh
+
+# Run specific test file
+./tests/run-tests.sh test-util.js
+
+# Or run directly with GJS
+gjs -m tests/test-runner.js
+```
+
+### Test Coverage
+
+| Test File | Purpose |
+|-----------|---------|
+| `test-util.js` | Utility functions (time formatting, offsets, MD5) |
+| `test-timezone.js` | GLib.TimeZone and GLib.DateTime API compatibility |
+| `test-people-parsing.js` | JSON parsing and person data validation |
+| `test-gnome-apis.js` | GNOME API availability (GLib, Gio, Soup, GTK) |
+| `test-settings.js` | Settings schema validation |
+
+Tests verify:
+- ESM imports work correctly (`gi://GLib`, `gi://Soup?version=3.0`)
+- GObject class registration API
+- Soup 3.0 HTTP client API (`send_and_read_async`)
+- GTK 4 widget API for preferences
+- Settings schema structure and default values

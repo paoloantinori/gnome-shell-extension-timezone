@@ -66,8 +66,14 @@ export function md5Hash(input) {
  */
 let _sharedSession = null;
 
+const SESSION_TIMEOUT_SECONDS = 30;
+const SESSION_IDLE_TIMEOUT_SECONDS = 60;
+
 export function getSharedSession() {
-    if (!_sharedSession)
+    if (!_sharedSession) {
         _sharedSession = new Soup.Session();
+        _sharedSession.timeout = SESSION_TIMEOUT_SECONDS;
+        _sharedSession.idle_timeout = SESSION_IDLE_TIMEOUT_SECONDS;
+    }
     return _sharedSession;
 }
